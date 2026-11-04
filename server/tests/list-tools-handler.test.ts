@@ -13,6 +13,7 @@ import {
 } from '../src/tool-contracts.js';
 
 const EXPECTED_TOOL_NAMES = [
+  'get_bridge_status',
   'search_photos',
   'get_selected_photos',
   'get_photo_metadata',
@@ -105,8 +106,8 @@ describe('TOOL_DEFINITIONS', () => {
     }
   });
 
-  it('contains exactly 71 tools', () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(71);
+  it('contains exactly 72 tools', () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(72);
   });
 
   it('replaces the separate rating and flag tools', () => {
@@ -627,13 +628,13 @@ describe('tool contracts vs Lua dispatch', () => {
   function parseLuaDispatch(): Record<string, string> {
     const pluginPath = path.resolve(process.cwd(), '..', 'plugin', 'LightroomMCP.lrplugin', 'PluginInfoProvider.lua');
     const source = fs.readFileSync(pluginPath, 'utf8');
-    const match = source.match(/local DISPATCH = \{([\s\S]*?)\n\}/);
+    const match = source.match(/(?:local )?DISPATCH = \{([\s\S]*?)\n\}/);
     if (!match) {
       throw new Error('DISPATCH table not found');
     }
 
     return Object.fromEntries(
-      [...match[1].matchAll(/^\s*([a-z_]+)\s*=\s*([A-Za-z][A-Za-z0-9_]*\.[A-Za-z][A-Za-z0-9_]*)\s*,/gm)]
+      [...match[1].matchAll(/^\s*([a-z_]+)\s*=\s*([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)?)\s*,/gm)]
         .map((entry) => [entry[1], entry[2]]),
     );
   }

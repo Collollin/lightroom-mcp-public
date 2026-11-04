@@ -65,6 +65,10 @@ export class Dispatcher {
       this.log(`Bad JSON from plugin (${msg}): ${line}`);
       return;
     }
+    if (resp === null || typeof resp !== "object" || Array.isArray(resp)) {
+      this.log("Invalid plugin response frame");
+      return;
+    }
     const event = resp as unknown as { progressFor?: string; progress?: ToolProgress };
     if (event.progressFor && event.progress) {
       this.pending.get(event.progressFor)?.onProgress?.(event.progress);

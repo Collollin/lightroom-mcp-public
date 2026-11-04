@@ -1,10 +1,13 @@
 import { BrokerClient, BrokerServer, type ToolCaller } from "./broker.js";
 import { LockHeldError, type InstanceLock } from "./instance-lock.js";
 import type { CallOptions } from "./dispatcher.js";
+import { bridgeStatus, statusResponse, parseOwnerReply, unavailable, type OwnerStatus, type Observation } from "./bridge-status.js";
+import { validateToolArgs } from "./validate-args.js";
 import type { ToolResponse } from "./tool-handler.js";
 
 export interface Leader {
   callTool: ToolCaller;
+  readStatus: () => Promise<OwnerStatus>;
   stop: () => void;
 }
 
@@ -80,6 +83,18 @@ export class Bridge {
   }
 
   async callTool(name: string, args: unknown, options?: CallOptions): Promise<ToolResponse> {
+    if (name === "get_bridge_status") {
+      const invalid = validateToolArgs(name, args);
+      if (invalid) return { content: [{ type: "text", text: invalid }], isError: true };
+      const state = this.state;
+      let owner: Observation<OwnerStatus>;
+      switch (state.kind) {
+        case "leader": owner = { kind: "available", value: await state.leader.readStatus() }; break;
+        case "follower": owner = parseOwnerReply(await state.client.callTool(name, args, options)); break;
+        case "none": owner = unavailable(this.unreachableOwner === null ? "no_owner" : "owner_unreachable"); break;
+      }
+      return statusResponse(bridgeStatus(this.state.kind, this.state === state ? owner : unavailable("owner_changed")));
+    }
     await this.start();
     if (this.state.kind === "none") await this.waitForRole();
     switch (this.state.kind) {
@@ -193,7 +208,8 @@ export class Bridge {
       this.scheduleElection();
       return;
     }
-    callTool = leader.callTool;
+    callTool = (name, args, options) => name === "get_bridge_status"
+      ? this.callTool(name, args, options) : leader.callTool(name, args, options);
     this.state = { kind: "leader", leader, server, lock };
     this.log("[bridge] owning the plugin connection");
     lock.onLost(() => this.stepDown(lock));

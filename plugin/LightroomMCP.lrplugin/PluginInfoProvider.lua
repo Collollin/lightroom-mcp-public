@@ -1,3 +1,7 @@
+local LrApplication = import 'LrApplication'
+local loadedInfo = require 'Info'
+local activeBusinessOperations = 0
+
 local LrTasks = import 'LrTasks'
 local LrProgressScope = import 'LrProgressScope'
 local LrDialogs = import 'LrDialogs'
@@ -197,7 +201,33 @@ end
 
 local SUPERSEDED_CHECK_TICKS = 5
 
-local DISPATCH = {
+local DISPATCH
+local function observed(getter)
+    local ok, value = LrTasks.pcall(getter)
+    if ok and value ~= nil and value ~= "" then return { kind = "available", value = value } end
+    return { kind = "unavailable", reason = "getter_unavailable" }
+end
+
+local function versionString(version)
+    if type(version) ~= "table" or type(version.major) ~= "number" then return nil end
+    return table.concat({ version.major, version.minor or 0, version.revision or 0, version.build or 0 }, ".")
+end
+
+local function getBridgeStatus()
+    local actions = {}
+    for action in pairs(DISPATCH) do actions[#actions + 1] = action end
+    table.sort(actions)
+    return {
+        activeOperations = { kind = "available", value = activeBusinessOperations },
+        pluginVersion = observed(function() return versionString(loadedInfo.VERSION) end),
+        lightroomVersion = observed(function() return versionString(LrApplication.versionTable()) end),
+        catalogPath = observed(function() return LrApplication.activeCatalog():getPath() end),
+        registeredActions = { kind = "available", value = actions },
+    }
+end
+
+DISPATCH = {
+    get_bridge_status = getBridgeStatus,
     -- Heartbeat no-op. The MCP server pings on this action every
     -- HEARTBEAT_INTERVAL_SECONDS (server/src/index.ts) so the plugin can
     -- tell a healthy-but-idle session apart from a genuinely dead one
@@ -370,6 +400,7 @@ local function dispatchAction(request)
     local id = request.id
     local action = request.action
     local params = request.params or {}
+    if action == "get_bridge_status" and not pluginState.sendConnected then return end
 
     if request.undecodable then
         addLog("Rejecting undecodable request id=" .. tostring(id))
@@ -421,9 +452,12 @@ local function dispatchAction(request)
         context.scope = scope
         activeRequests[id] = context
     end
+    local business = action ~= "ping" and action ~= "get_bridge_status"
+    if business then activeBusinessOperations = activeBusinessOperations + 1 end
     local execOk, resultOrErr = LrTasks.pcall(function()
         return handler(params, context)
     end)
+    if business then activeBusinessOperations = activeBusinessOperations - 1 end
     activeRequests[id] = nil
     if context then
         if context:isCanceled() then addLog("Cancelled " .. action .. " id=" .. tostring(id)) end

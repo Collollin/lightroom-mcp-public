@@ -8,6 +8,7 @@ import type { CallOptions, PluginResponse } from '../src/dispatcher.js';
 import type { ToolCaller } from '../src/broker.js';
 
 const TOOL_CLASSES: Record<string, 'read-only' | 'additive' | 'destructive'> = {
+  get_bridge_status: 'read-only',
   search_photos: 'read-only',
   get_selected_photos: 'read-only',
   get_photo_metadata: 'read-only',
@@ -257,7 +258,7 @@ describe('createMcpServer', () => {
 
   describe('toolset selection', () => {
     const coreNames = [
-      'search_photos', 'get_selected_photos', 'get_photo_metadata', 'get_photo_preview',
+      'get_bridge_status', 'search_photos', 'get_selected_photos', 'get_photo_metadata', 'get_photo_preview',
       'get_photo_previews', 'find_duplicate_groups', 'get_photo_stats', 'set_gps',
       'set_location', 'set_metadata', 'set_ai_metadata', 'get_ai_metadata', 'list_folders',
       'get_folder_photos', 'list_collections', 'create_collection', 'create_smart_collection',
@@ -273,10 +274,10 @@ describe('createMcpServer', () => {
     });
 
     it.each([
-      ['develop', 56, ['core', 'develop']],
-      ['masks', 47, ['core', 'masks']],
-      ['develop,masks', 71, ['core', 'develop', 'masks']],
-      ['all', 71, ['core', 'develop', 'masks']],
+      ['develop', 57, ['core', 'develop']],
+      ['masks', 48, ['core', 'masks']],
+      ['develop,masks', 72, ['core', 'develop', 'masks']],
+      ['all', 72, ['core', 'develop', 'masks']],
     ] as const)('toolset %s preserves contract order and definitions', async (toolsets, count, groups) => {
       const privateContracts = structuredClone(TOOL_CONTRACTS);
       pair = await connect({ toolsets });
@@ -343,10 +344,10 @@ describe('createMcpServer', () => {
     });
   });
 
-  it('loads only three hot catalog tools upfront over the wire', async () => {
+  it('loads status and three hot catalog tools upfront over the wire', async () => {
     pair = await connect();
     const { tools } = await pair.client.listTools();
-    const hotNames = ['search_photos', 'get_photo_preview', 'set_rating_and_flag'];
+    const hotNames = ['get_bridge_status', 'search_photos', 'get_photo_preview', 'set_rating_and_flag'];
     expect(tools.filter((tool) => tool._meta?.['anthropic/alwaysLoad'] === true).map((tool) => tool.name)).toEqual(hotNames);
     for (const tool of tools) {
       if (hotNames.includes(tool.name)) expect(tool._meta).toEqual({ 'anthropic/alwaysLoad': true });
@@ -449,10 +450,10 @@ describe('createMcpServer', () => {
       }
     });
 
-    it('returns all 71 tools', async () => {
+    it('returns all 72 tools', async () => {
       pair = await connect({ toolsets: 'all' });
       const { tools } = await pair.client.listTools();
-      expect(tools).toHaveLength(71);
+      expect(tools).toHaveLength(72);
     });
 
     it('includes search_photos and set_develop_settings', async () => {

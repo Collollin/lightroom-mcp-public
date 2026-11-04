@@ -1,3 +1,4 @@
+import { bridgeStatus, statusResponse, unavailable, type BridgeStatus } from "./bridge-status.js";
 import type { CallOptions, Dispatcher } from "./dispatcher.js";
 import { validateToolArgs } from "./validate-args.js";
 import { findDuplicateGroups, type DuplicateGroupArgs } from "./duplicate-groups.js";
@@ -6,6 +7,7 @@ import { cropPreview, regionRenderArgs, type PreviewArgs } from "./preview-regio
 import { PREVIEW_SIZES } from "./preview-sizes.js";
 
 export interface ToolHandlerDeps {
+  readStatus?: () => Promise<BridgeStatus>;
   dispatcher: Pick<Dispatcher, "call">;
   isReady: () => boolean;
   notReadyMessage?: () => string;
@@ -87,6 +89,9 @@ export function createCallToolHandler(deps: ToolHandlerDeps) {
       };
     }
 
+    if (name === "get_bridge_status") {
+      return statusResponse(deps.readStatus ? await deps.readStatus() : bridgeStatus("none", unavailable("no_owner")));
+    }
     await deps.settleReadiness?.();
 
     if (!deps.isReady()) {

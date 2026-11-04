@@ -487,6 +487,13 @@ const searchFilterProperties = {
 
 export const TOOL_CONTRACTS: ToolContract[] = [
   {
+    name: "get_bridge_status", toolset: "core", title: "Get Bridge Status", alwaysLoad: true,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    description: "Read bridge health, socket/probe evidence, versions, catalog path and registered actions within 1.5s locally or 2s via owner. Bypasses readiness and Develop queues. Unobserved metadata is explicit. Busy means active plugin operations. No Lightroom state changes.",
+    luaHandler: "getBridgeStatus",
+    inputSchema: { type: "object", additionalProperties: false, properties: {} },
+  },
+  {
     name: "search_photos",
     toolset: "core",
     alwaysLoad: true,

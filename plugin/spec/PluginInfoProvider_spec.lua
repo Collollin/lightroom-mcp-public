@@ -25,6 +25,7 @@ local HANDLER_MODULES = {
 local function installStubs(prefs, asyncTasks, opts)
     opts = opts or {}
     helper.installImport({
+        LrApplication = opts.application or {},
         LrProgressScope = function()
             return { setCancelable = function() end, setPortionComplete = function() end,
                 setCaption = function() end, isCanceled = function() return false end, done = function() end }
@@ -266,6 +267,127 @@ describe("PluginInfoProvider server task", function()
             binds[1].onMessage(nil, '{"hello":"' .. _G.LightroomMCP_State.token .. '","action":"ping"')
 
             assert.is_nil(sends[1])
+        end)
+    end)
+
+    describe("bridge status", function()
+        local function fixture(application, business)
+            local binds, sends, tasks = {}, {}, {}
+            installStubs(nil, tasks, {
+                runTask = true, stopLoopOnSleep = true, capturedBinds = binds, sends = sends,
+                application = application,
+            })
+            package.loaded.JSON = nil
+            package.loaded.HandlerDevelop = { setDevelopSettings = business or function() return {} end }
+            local mod = loadInfoProvider()
+            mod.startServer()
+            _G.LightroomMCP_State.sendConnected = true
+            local function request(action, id)
+                binds[1].onMessage(nil, require('JSON'):encode({
+                    hello = _G.LightroomMCP_State.token, id = id or action, action = action,
+                }))
+                tasks[#tasks]()
+                return sends[#sends] and require('JSON'):decode(sends[#sends])
+            end
+            return request, binds, tasks, sends
+        end
+
+        it("reads only runtime identity getters and actual registered actions", function()
+            local unexpected = {}
+            local function forbid(_, key)
+                unexpected[#unexpected + 1] = key
+                error("Unexpected SDK access " .. key)
+            end
+            local catalog = setmetatable({ getPath = function() return "/fixture/health.lrcat" end }, { __index = forbid })
+            local application = setmetatable({
+                activeCatalog = function() return catalog end,
+                versionTable = function() return { major = 15, minor = 6, revision = 1, build = 2 } end,
+            }, { __index = forbid })
+            local request = fixture(application)
+            local result = request("get_bridge_status").result
+            assert.same({}, unexpected)
+            assert.same({ kind = "available", value = "/fixture/health.lrcat" }, result.catalogPath)
+            assert.same({ kind = "available", value = "15.6.1.2" }, result.lightroomVersion)
+            local version = require('Info').VERSION
+            assert.are.equal(table.concat({ version.major, version.minor, version.revision, version.build }, "."), result.pluginVersion.value)
+            assert.are.equal(0, result.activeOperations.value)
+            local found = {}
+            for _, name in ipairs(result.registeredActions.value) do found[name] = true end
+            assert.is_true(found.get_bridge_status)
+            assert.is_true(found.ping)
+            assert.is_true(found.set_develop_settings)
+            local sorted = {}
+            for i, name in ipairs(result.registeredActions.value) do sorted[i] = name end
+            table.sort(sorted)
+            assert.same(sorted, result.registeredActions.value)
+        end)
+
+        it("skips status getters when its response connection has disappeared", function()
+            local reads = 0
+            local _, binds, tasks, sends = fixture({ versionTable = function() reads = reads + 1 end })
+            binds[1].onMessage(nil, require('JSON'):encode({
+                hello = _G.LightroomMCP_State.token, id = "status", action = "get_bridge_status",
+            }))
+            _G.LightroomMCP_State.sendConnected = false
+            tasks[#tasks]()
+            assert.are.equal(0, reads)
+            assert.same({}, sends)
+        end)
+
+        it("protects optional getters independently", function()
+            for _, application in ipairs({
+                { versionTable = function() error("not available") end,
+                  activeCatalog = function() return { getPath = function() return "/fixture/catalog.lrcat" end } end },
+                { versionTable = function() return { major = 15, minor = 6 } end,
+                  activeCatalog = function() error("no catalog") end },
+                {},
+            }) do
+                _G.LightroomMCP_State = nil
+                local result = fixture(application)("get_bridge_status").result
+                assert.are.equal("available", result.pluginVersion.kind)
+                assert.are.equal("available", result.registeredActions.kind)
+                if application.versionTable and result.lightroomVersion.kind == "unavailable" then
+                    assert.are.equal("available", result.catalogPath.kind)
+                elseif application.versionTable then
+                    assert.are.equal("unavailable", result.catalogPath.kind)
+                    assert.are.equal("available", result.lightroomVersion.kind)
+                else
+                    assert.are.equal("unavailable", result.catalogPath.kind)
+                    assert.are.equal("unavailable", result.lightroomVersion.kind)
+                end
+            end
+        end)
+
+        it("keeps the loaded plugin version when Info is replaced on disk", function()
+            local original = require('Info')
+            local request = fixture({})
+            package.loaded.Info = { VERSION = { major = 99, minor = 0, revision = 0, build = 0 } }
+            local result = request("get_bridge_status").result
+            package.loaded.Info = original
+            assert.are.equal(tostring(original.VERSION.major) .. "." .. tostring(original.VERSION.minor) .. "."
+                .. tostring(original.VERSION.revision) .. "." .. tostring(original.VERSION.build), result.pluginVersion.value)
+        end)
+
+        it("answers during a Develop handler and clears business activity on success or error", function()
+            for _, fail in ipairs({ false, true }) do
+                _G.LightroomMCP_State = nil
+                local request
+                request = fixture({}, function()
+                    assert.are.equal(1, request("get_bridge_status").result.activeOperations.value)
+                    request("ping")
+                    assert.are.equal(1, request("get_bridge_status").result.activeOperations.value)
+                    if fail then error("business failed") end
+                    return { done = true }
+                end)
+                local response = request("set_develop_settings", "business")
+                assert.are.equal("business", response.id)
+                if fail then
+                    assert.are.equal("business failed", response.error)
+                else
+                    assert.same({ done = true }, response.result)
+                end
+                assert.are.equal(0, request("get_bridge_status").result.activeOperations.value)
+            end
         end)
     end)
 
