@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, jest } from '@jest/globals';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
+import { previewFixture } from './preview-fixture.js';
 import { createMcpServer } from '../src/create-server.js';
 import { parseToolsets } from '../src/toolsets.js';
 import { TOOL_CONTRACTS } from '../src/tool-contracts.js';
@@ -476,30 +477,26 @@ describe('createMcpServer', () => {
   it('preserves preview image blocks over MCP', async () => {
     pair = await connect({ call: async () => ({
       id: '1',
-      result: { photo_id: 914, bytes: 3, image: { mime_type: 'image/jpeg', data: 'QUJD' } },
+      result: previewFixture(),
     }) });
 
     const result = await pair.client.callTool({ name: 'get_photo_preview', arguments: { photo_id: 914 } });
 
     expect(result.isError).toBeUndefined();
     expect(result.content).toEqual([
-      { type: 'text', text: '{"photo_id":914,"bytes":3}' },
-      { type: 'image', data: 'QUJD', mimeType: 'image/jpeg' },
+      { type: 'text', text: JSON.stringify((({ image: _, ...metadata }) => metadata)(previewFixture())) },
+      { type: 'image', data: previewFixture().image.data, mimeType: 'image/jpeg' },
     ]);
   });
 
   it('preserves all batch preview image blocks over MCP', async () => {
-    pair = await connect({ call: async () => ({ id: '1', result: {
-      complete: true, remaining_ids: [], previews: [1, 2, 3].map(id => ({
-        requested_id: id, photo_id: id, image: { mime_type: 'image/jpeg', data: 'QUJD' },
-      })),
-    } }) });
+    let next = 0;
+    pair = await connect({ call: async () => ({ id: '1', result: previewFixture(++next, 256) }) });
     const result = await pair.client.callTool({ name: 'get_photo_previews', arguments: { photo_ids: [1, 2, 3] } });
     expect(result.isError).toBeUndefined();
     expect(result.content).toEqual([
-      { type: 'text', text: JSON.stringify({ complete: true, remaining_ids: [],
-        previews: [1, 2, 3].map(id => ({ requested_id: id, photo_id: id, image_index: id })) }) },
-      ...[1, 2, 3].map(() => ({ type: 'image', data: 'QUJD', mimeType: 'image/jpeg' })),
+      { type: 'text', text: JSON.stringify({ previews: [1, 2, 3].map(id => { const { image: _, ...metadata } = previewFixture(id, 256); return { ...metadata, requested_id: id, image_index: id }; }), complete: true, remaining_ids: [], bytes: 3 * previewFixture().bytes }) },
+      ...[1, 2, 3].map(() => ({ type: 'image', data: previewFixture().image.data, mimeType: 'image/jpeg' })),
     ]);
   });
 

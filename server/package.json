@@ -21,9 +21,9 @@
     "check": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "eslint src tests",
     "watch": "tsc --watch",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage --runInBand",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage --runInBand",
     "prepare": "npm run build",
     "prepack": "node scripts/stage-plugin.mjs",
     "prepublishOnly": "npm run build"
