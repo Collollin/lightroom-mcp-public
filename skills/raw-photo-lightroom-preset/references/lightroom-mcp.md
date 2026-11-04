@@ -17,6 +17,7 @@ The integration adds the missing feedback loop:
 - `create_develop_snapshot`, `list_develop_snapshots`, `apply_develop_snapshot`, and `delete_develop_snapshot`: save and restore a photo's Develop state and manage its snapshots.
 - `export_photos`: render the actual Lightroom result for visual comparison.
 - `copy_develop_settings`: apply an approved subset to a cluster.
+- `create_virtual_copies`: create an approved experiment on up to 25 distinct sources. Use a stable `operation_id` and retry the exact ordered `photo_ids` and `copy_name` after a timeout. Catalog records persist across reconnect and normal restart. Inspect `status` and `retryable`; `created` includes earlier verified mappings, `inputs` retains aliases and missing selectors, and `observed_copies` retains returned IDs that could not be verified. Uncertain attempts block creation. A new operation ID intentionally creates more copies; no ID makes every call additive. Use returned `copy_id` values for edits. Copy names never identify ownership, and deleted recorded copies are never replaced.
 - `get_develop_preset`: read exact historical preset settings.
 - `compare_develop_presets`: diff an approved look and a versioned candidate.
 - `create_develop_preset`: capture explicit settings from a representative as a plugin-managed checkpoint.
@@ -31,7 +32,7 @@ This improves setting selection. It does not by itself create a canonical preset
 ## Current gaps
 
 - Export returns a destination and count, not exact output filenames. Export one representative per unique folder and inspect the new file.
-- No virtual-copy, undo, or reset tool.
+- No undo or reset tool.
 - Adobe's SDK creates plugin-managed presets that are hidden from the Develop panel. Use versioned names and export/import the accepted file, or create a visible canonical preset through Lightroom's UI.
 - A preset can be exported only when Lightroom exposes a backing file. Built-in presets can lack one, and the backing format is determined by Lightroom.
 - Global develop-setting allowlists do not expose Profile, Color Grading, Calibration, or global Point Color. Local Point Color is available through the mask tools above.

@@ -1551,13 +1551,14 @@ export const TOOL_CONTRACTS: ToolContract[] = [
     title: "Create virtual copies",
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     luaHandler: "HandlerVirtualCopies.create",
-    description: "Create one virtual copy per distinct photo (max 25); copy_name optionally names each. Returns copies with photo_id/master_id/copy_id and missing IDs; edit via copy_id. Restores selection/source. Repeats create more; failures can leave earlier copies.",
+    description: "Create one virtual copy per distinct photo (max 25), optionally named. operation_id replays catalog records across reconnect/restart; changed ordered inputs or copy_name conflict. Without it each call adds copies. Inspect status (complete/partial/uncertain/conflict/blocked) and retryable. created includes replayed verified copies (photo_id/master_id/copy_id); inputs preserves aliases/missing, observed_copies retains known returned IDs. Uncertain attempts block creation. Never adopts/deletes/replaces copies. Restores selection/source; restoration_error is separate.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       properties: {
         photo_ids: { ...photoIdArray("Photo IDs or file paths"), maxItems: 25 },
         copy_name: { type: "string", minLength: 1, pattern: "\\S", description: "Name for each new virtual copy" },
+        operation_id: { type: "string", minLength: 1, maxLength: 128, pattern: "\\S", description: "Retry identity, max 128 UTF-8 bytes, retained in this catalog without expiry. Numeric selectors normalize to strings. A new ID creates more copies." },
       },
       required: ["photo_ids"],
     },

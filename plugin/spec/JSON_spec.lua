@@ -106,4 +106,11 @@ describe("JSON", function()
 
         assert.are.equal(original, decoded.s)
     end)
+    it("strict decoding rejects any suffix after one value", function()
+        assert.are.same({ a = 1 }, JSON:decode(' {"a":1} \n', true))
+        for _, suffix in ipairs({ ' garbage', ']', ',{}', '{}', 'null' }) do
+            assert.has_error(function() JSON:decode('{"a":1}' .. suffix, true) end, 'Trailing JSON content')
+        end
+        assert.are.same({ a = 1 }, JSON:decode('{"a":1} legacy suffix'))
+    end)
 end)
