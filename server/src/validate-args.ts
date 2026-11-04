@@ -1,5 +1,5 @@
 import { Ajv, type ValidateFunction } from "ajv";
-import type { PreviewArgs } from "./preview-region.js";
+import type { PreviewArgs } from "./previews.js";
 import {
   deleteMasksValidationSchema,
   developSettingKeysValidationSchema,

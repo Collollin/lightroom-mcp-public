@@ -23,6 +23,7 @@ local POLL_SECONDS = 0.05
 local MAX_BYTES = 3.5 * 1024 * 1024
 -- Claude rejects images over 2000px once a request holds more than 20 images.
 local MAX_EDGE = 2000
+local MAX_SOURCE_BYTES = 10 * 1024 * 1024
 
 -- Width and height from the first start-of-frame marker, or nil if the data
 -- is not a JPEG this can read. Lightroom does not report the size it chose.
@@ -60,6 +61,12 @@ local function renderPreview(args, batchDeadline, byteLimit, strictDimensions)
     end
     size = math.floor(size)
 
+    local sourceMode = args._preview_source == true
+    local duration = TIMEOUT_SECONDS
+    if sourceMode and type(args._preview_timeout_ms) == "number" then
+        duration = math.max(0, math.min(TIMEOUT_SECONDS, args._preview_timeout_ms / 1000))
+    end
+    local deadline = batchDeadline or (LrDate.currentTime() + duration)
     local catalog = LrApplication.activeCatalog()
     local photo = PhotoLookup.resolveOne(catalog, args.photo_id)
     if not photo then
@@ -68,12 +75,12 @@ local function renderPreview(args, batchDeadline, byteLimit, strictDimensions)
 
     -- Wall-clock deadline across every attempt: sleeps can overshoot and the
     -- request call itself takes time, so counting sleeps undercounts.
-    local deadline = batchDeadline or (LrDate.currentTime() + TIMEOUT_SECONDS)
-    byteLimit = byteLimit or MAX_BYTES
+    byteLimit = sourceMode and MAX_SOURCE_BYTES or (byteLimit or MAX_BYTES)
     local function render(edge)
         -- requestJpegThumbnail is asynchronous and may call back before it
         -- returns. The request object must stay referenced until the callback
         -- fires, or Lightroom can cancel it.
+        if LrDate.currentTime() >= deadline then error("Preview deadline exceeded") end
         local done, data, failure = false, nil, nil
         local request = photo:requestJpegThumbnail(edge, edge, function(jpegData, errorMessage)
             if done then return end
@@ -88,9 +95,11 @@ local function renderPreview(args, batchDeadline, byteLimit, strictDimensions)
         if not done then
             error(string.format("Preview not ready after %ds", TIMEOUT_SECONDS))
         end
+        if LrDate.currentTime() >= deadline and done then error("Preview deadline exceeded") end
         if not data then
             error("Preview failed: " .. tostring(failure or "no image data"))
         end
+        if type(data) ~= "string" then error("Preview failed: invalid image data") end
         return data
     end
 
@@ -103,11 +112,12 @@ local function renderPreview(args, batchDeadline, byteLimit, strictDimensions)
     -- A smaller request makes Lightroom fall back to a smaller cached preview.
     local edge = size
     local jpeg = render(edge)
-    while tooBig(jpeg) and edge > MIN_SIZE do
+    while not sourceMode and tooBig(jpeg) and edge > MIN_SIZE do
         edge = math.max(MIN_SIZE, math.floor(edge / 2))
         jpeg = render(edge)
     end
     if #jpeg > byteLimit then
+        if sourceMode then error("Preview source exceeds the 10 MiB byte limit") end
         error(string.format("Preview is %d bytes, over the %d byte limit even at size %d",
             #jpeg, byteLimit, MIN_SIZE))
     end

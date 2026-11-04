@@ -75,7 +75,7 @@ for (const target of TARGETS) {
   log(`compiling ${target} → ${path.relative(repoRoot, outPath)}`);
   const result = spawnSync(
     bunPath,
-    ["build", "--compile", `--target=${target}`, entry, "--outfile", outPath],
+    ["build", "--compile", `--target=${target}`, entry, path.join(serverDir, "dist", "preview-worker.js"), "--outfile", outPath],
     { stdio: "inherit", cwd: serverDir },
   );
   if (result.status !== 0) {

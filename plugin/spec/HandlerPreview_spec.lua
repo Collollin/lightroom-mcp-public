@@ -322,3 +322,47 @@ describe("HandlerPreview batch preview", function()
         assert.is_true(result.bytes <= 8 * 1024 * 1024)
     end)
 end)
+
+describe("HandlerPreview private source mode", function()
+    it("returns a persistent oversized cached source once for server normalization", function()
+        local calls = 0
+        local jpeg = fakeJpeg(6000, 4000) .. string.rep("x", 9 * 1024 * 1024)
+        local photo = previewPhoto({ id = "1" }, function(_, _, _, cb) calls = calls + 1; cb(jpeg) end)
+        local _, Handler = setup({ photo })
+        local result = Handler.getPhotoPreview({ photo_id = "1", size = 512, _preview_source = true, _preview_timeout_ms = 20000 })
+        assert.are.equal(1, calls)
+        assert.are.equal(6000, result.width)
+        assert.are.equal(#jpeg, result.bytes)
+    end)
+
+    it("refuses an over-cap source before base64 allocation", function()
+        local photo = previewPhoto({ id = "1" }, function(_, _, _, cb) cb(string.rep("x", 10 * 1024 * 1024 + 1)) end)
+        local _, Handler = setup({ photo })
+        assert.has_error(function() Handler.getPhotoPreview({ photo_id = "1", _preview_source = true }) end,
+            "Preview source exceeds the 10 MiB byte limit")
+    end)
+
+    it("uses the remaining source acquisition deadline", function()
+        local photo = previewPhoto({ id = "1" }, function() end)
+        local _, Handler, sleeps = setup({ photo })
+        assert.has_error(function() Handler.getPhotoPreview({ photo_id = "1", _preview_source = true, _preview_timeout_ms = 100 }) end,
+            "Preview not ready after 20s")
+        assert.are.equal(2, sleeps.count)
+    end)
+
+    it("rejects a synchronous callback that completed after the deadline", function()
+        local sleeps
+        local photo = previewPhoto({ id = "1" }, function(_, _, _, cb) sleeps.now = 21; cb(fakeJpeg()) end)
+        local _, Handler
+        _, Handler, sleeps = setup({ photo })
+        assert.has_error(function() Handler.getPhotoPreview({ photo_id = "1", _preview_source = true }) end,
+            "Preview deadline exceeded")
+    end)
+
+    it("validates the callback payload before byte inspection", function()
+        local photo = previewPhoto({ id = "1" }, function(_, _, _, cb) cb({}) end)
+        local _, Handler = setup({ photo })
+        assert.has_error(function() Handler.getPhotoPreview({ photo_id = "1", _preview_source = true }) end,
+            "Preview failed: invalid image data")
+    end)
+end)

@@ -574,14 +574,14 @@ export const TOOL_CONTRACTS: ToolContract[] = [
     annotations: { readOnlyHint: true, openWorldHint: false },
     luaHandler: "HandlerPreview.getPhotoPreview",
     description:
-      "Lightroom-rendered JPEG with Develop edits (raw supported). region crops the rendered frame after develop crop/rotation: normalized x/y/width/height, origin top-left, x right, y down. width/height/bytes are actual; requested_size is the source request. See size for cost/edge rules.",
+      "Lightroom-rendered JPEG with Develop edits (raw supported). region crops the rendered frame after develop crop/rotation: normalized x/y/width/height, origin top-left, x right, y down. width/height/bytes are actual; requested_size is the source request. Images are decoded and bounded to 2000px and 3.5 MiB within a 20 s deadline. Sources over 10 MiB, 32 MP, or the decoder memory limit return an explicit error. See size for cost/edge rules.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       properties: {
         photo_id: photoIdSchema("Photo ID or file path"),
         size: {
-          description: "Minimum longest edge: cull requests 512 (about 900px on the tested raw), detail requests 1024 (about 1800px); numeric 64-2048, default 512. Lightroom returns its smallest cached preview meeting the edge, often larger. Over 3.5 MB or 2000px retries smaller. cull is for culling (about 650 tokens), detail for inspecting details (about 2.5k tokens): earlier Claude estimates, varying by image/model and repeated each turn in history.",
+          description: "Minimum longest edge: cull requests 512 (about 900px on the tested raw), detail requests 1024 (about 1800px); numeric 64-2048, default 512. Lightroom returns its smallest cached preview meeting the edge, often larger. Oversized cached JPEGs are resized or recompressed to at most 2000px and 3.5 MiB. cull is for culling (about 650 tokens), detail for inspecting details (about 2.5k tokens): earlier Claude estimates, varying by image/model and repeated each turn in history.",
           oneOf: [
             { type: "number", minimum: 64, maximum: 2048 },
             { type: "string", enum: Object.keys(PREVIEW_SIZES) },
@@ -590,7 +590,7 @@ export const TOOL_CONTRACTS: ToolContract[] = [
         region: {
           type: "object",
           additionalProperties: false,
-          description: "Rectangle within the rendered preview, including its develop crop and displayed orientation. Pixel bounds round outward. Region calls request a larger source by dividing size by the longest normalized side, capped at 2048; requested_size reports that source request.",
+          description: "Rectangle within the rendered preview, including its develop crop and displayed orientation. Pixel bounds round outward in the original source before output resizing. Region calls request a larger source by dividing size by the longest normalized side, capped at 2048; requested_size reports that source request.",
           properties: {
             x: { type: "number", minimum: 0, exclusiveMaximum: 1 },
             y: { type: "number", minimum: 0, exclusiveMaximum: 1 },
@@ -610,7 +610,7 @@ export const TOOL_CONTRACTS: ToolContract[] = [
     annotations: { readOnlyHint: true, openWorldHint: false },
     luaHandler: "HandlerPreview.getPhotoPreviews",
     description:
-      "Get JPEG thumbnails for 1–20 photos in input order for culling. Maps requested_id/photo_id to 1-based image_index; errors have no image and do not fail the batch. Default size 256; max edge 2000px; total budget 8 MiB. After 20 s returns complete:false and remaining_ids to retry. Catalog unchanged.",
+      "Get JPEG thumbnails for 1–20 photos in input order for culling. Maps requested_id/photo_id to 1-based image_index; errors have no image and do not fail the batch. Default size 256; max edge 2000px and 3.5 MiB per image; total budget 8 MiB. Oversized cached JPEGs are resized or recompressed. Sources over 10 MiB, 32 MP, or the decoder memory limit fail per photo. At the byte budget or 20 s deadline returns complete:false and remaining_ids to retry. Catalog unchanged.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

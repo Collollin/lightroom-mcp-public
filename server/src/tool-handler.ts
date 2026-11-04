@@ -2,7 +2,7 @@ import type { CallOptions, Dispatcher } from "./dispatcher.js";
 import { validateToolArgs } from "./validate-args.js";
 import { findDuplicateGroups, type DuplicateGroupArgs } from "./duplicate-groups.js";
 import { getPhotoStats } from "./photo-stats.js";
-import { cropPreview, regionRenderArgs, type PreviewArgs } from "./preview-region.js";
+import { getPreviews, type PreviewArgs } from "./previews.js";
 import { PREVIEW_SIZES } from "./preview-sizes.js";
 
 export interface ToolHandlerDeps {
@@ -110,19 +110,26 @@ export function createCallToolHandler(deps: ToolHandlerDeps) {
         const { photo_ids } = args as { photo_ids: (string | number)[] };
         return { content: successContent(await getPhotoStats(deps.dispatcher, photo_ids, options)) };
       }
-      const region = name === "get_photo_preview" ? (args as PreviewArgs).region : undefined;
-      const params = region ? regionRenderArgs(args as PreviewArgs) : args;
+      if (name === "get_photo_preview" || name === "get_photo_previews") {
+        const request = name === "get_photo_preview"
+          ? { kind: "single" as const, args: args as PreviewArgs }
+          : { kind: "batch" as const, ...args as { photo_ids: (string | number)[]; size?: number } };
+        const response = { content: successContent(await getPreviews(deps.dispatcher, request, options)) };
+        if (Buffer.byteLength(JSON.stringify(response), "utf8") > 16 * 1024 * 1024 - 1024) {
+          throw new Error("Preview response exceeds the 16 MiB transport limit");
+        }
+        return response;
+      }
       const resp = options
-        ? await deps.dispatcher.call(name, params, undefined, options)
-        : await deps.dispatcher.call(name, params);
+        ? await deps.dispatcher.call(name, args, undefined, options)
+        : await deps.dispatcher.call(name, args);
       if (resp.error) {
         return {
           content: [{ type: "text", text: `Error: ${resp.error}` }],
           isError: true,
         };
       }
-      if (region && options?.signal?.aborted) throw new Error("Request cancelled");
-      return { content: successContent(region ? cropPreview(resp.result, region) : resp.result) };
+      return { content: successContent(resp.result) };
     } catch (e) {
       return {
         content: [{ type: "text", text: e instanceof Error ? e.message : String(e) }],

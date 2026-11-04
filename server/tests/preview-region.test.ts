@@ -1,7 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import jpeg from 'jpeg-js';
 import { createCallToolHandler } from '../src/tool-handler.js';
-import type { PluginResponse } from '../src/dispatcher.js';
+import type { CallOptions, PluginResponse } from '../src/dispatcher.js';
 
 function fixture() {
   const data = Buffer.alloc(32 * 16 * 4);
@@ -18,7 +18,7 @@ function fixture() {
 }
 
 function makeHandler(response: PluginResponse = { id: 'preview', result: fixture() }) {
-  const call = jest.fn(async (_action: string, _args: unknown) => response);
+  const call = jest.fn(async (_action: string, _args: unknown, _timeout?: number, _options?: CallOptions) => response);
   return { handler: createCallToolHandler({ isReady: () => true, dispatcher: { call } }), call };
 }
 
@@ -30,7 +30,7 @@ describe('get_photo_preview region', () => {
     });
 
     expect(result.isError).toBeUndefined();
-    expect(call).toHaveBeenCalledWith('get_photo_preview', { photo_id: 914, size: 1024 });
+    expect(call).toHaveBeenCalledWith('get_photo_preview', { ...{ photo_id: 914, size: 1024 }, _preview_source: true, _preview_timeout_ms: expect.any(Number) }, expect.any(Number), undefined);
     const image = result.content[1];
     if (image.type !== 'image') throw new Error('Expected cropped JPEG');
     const encoded = Buffer.from(image.data, 'base64');
@@ -56,7 +56,7 @@ describe('get_photo_preview region', () => {
       photo_id: 'photo.raw', ...(size === undefined ? {} : { size }),
       region: { x: 0, y: 0, width: 0.1, height: 0.1 },
     });
-    expect(call).toHaveBeenCalledWith('get_photo_preview', { photo_id: 'photo.raw', size: expected });
+    expect(call).toHaveBeenCalledWith('get_photo_preview', { ...{ photo_id: 'photo.raw', size: expected }, _preview_source: true, _preview_timeout_ms: expect.any(Number) }, expect.any(Number), undefined);
   });
 
   it('leaves the no-region full-frame arguments, metadata and JPEG bytes unchanged', async () => {
@@ -64,7 +64,7 @@ describe('get_photo_preview region', () => {
     const { handler, call } = makeHandler({ id: 'preview', result: preview });
     const result = await handler('get_photo_preview', { photo_id: 914, size: 1024 });
     const { image, ...metadata } = preview;
-    expect(call).toHaveBeenCalledWith('get_photo_preview', { photo_id: 914, size: 1024 });
+    expect(call).toHaveBeenCalledWith('get_photo_preview', { ...{ photo_id: 914, size: 1024 }, _preview_source: true, _preview_timeout_ms: expect.any(Number) }, expect.any(Number), undefined);
     expect(result.content).toEqual([
       { type: 'text', text: JSON.stringify(metadata) },
       { type: 'image', data: image.data, mimeType: image.mime_type },
@@ -80,7 +80,7 @@ describe('get_photo_preview region', () => {
       photo_id: 914, size, region: { x: 0, y: 0, width: 0.5, height: 0.5 },
     });
     expect(result.isError).toBeUndefined();
-    expect(call).toHaveBeenCalledWith('get_photo_preview', { photo_id: 914, size: expected });
+    expect(call).toHaveBeenCalledWith('get_photo_preview', { ...{ photo_id: 914, size: expected }, _preview_source: true, _preview_timeout_ms: expect.any(Number) }, expect.any(Number), undefined);
   });
 
   it('rounds a subpixel region outward to at least one pixel', async () => {
