@@ -374,7 +374,7 @@ describe('createMcpServer', () => {
     pair = await connect({ call: async (_action, _params, _timeout, options) => {
       options?.onProgress?.({ progress: 1, total: 2, message: 'a.jpg' });
       options?.onProgress?.({ progress: 2, total: 2, message: 'b.jpg' });
-      return { id: '1', result: { exported: 2 } };
+      return { id: '1', result: { destination: '/out', results: ['1', '2'].map((id, index) => ({ input_index: index + 1, requested_id: id, photo_id: id, status: 'skipped', reason: 'existing_file' })) } };
     } });
     const progress: unknown[] = [];
 
@@ -386,14 +386,14 @@ describe('createMcpServer', () => {
       { progress: 1, total: 2, message: 'a.jpg' },
       { progress: 2, total: 2, message: 'b.jpg' },
     ]);
-    expect(JSON.parse(result.content[0].text)).toEqual({ exported: 2 });
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ exported: 0, success: true, counts: { skipped: 2 } });
   });
 
   it('no progressToken leaves the result unchanged and requests no progress', async () => {
     let reporting = true;
     pair = await connect({ call: async (_action, _params, _timeout, options) => {
       reporting = options?.onProgress !== undefined;
-      return { id: '1', result: { exported: 2 } };
+      return { id: '1', result: { destination: '/out', results: ['1', '2'].map((id, index) => ({ input_index: index + 1, requested_id: id, photo_id: id, status: 'skipped', reason: 'existing_file' })) } };
     } });
 
     const result = asToolResult(await pair.client.callTool({ name: 'export_photos', arguments: {
@@ -401,7 +401,7 @@ describe('createMcpServer', () => {
     } }));
 
     expect(reporting).toBe(false);
-    expect(JSON.parse(result.content[0].text)).toEqual({ exported: 2 });
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ exported: 0, success: true, counts: { skipped: 2 } });
   });
 
   it('forwards client cancel to the running dispatcher request', async () => {

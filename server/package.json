@@ -55,6 +55,7 @@
   "dependencies": {
     "@modelcontextprotocol/server": "^2.4.0",
     "ajv": "^8.20.0",
+    "image-size": "2.0.4",
     "jpeg-js": "0.4.4"
   },
   "devDependencies": {

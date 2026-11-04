@@ -1212,7 +1212,7 @@ export const TOOL_CONTRACTS: ToolContract[] = [
     title: "Export photos",
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     luaHandler: "HandlerExport.exportPhotos",
-    description: "Export photos; returns success, exported count, destination, complete and remaining_ids to retry.",
+    description: "Export photos. Ordered results retain input_index, requested_id and resolved photo_id. completed has actual output.path, bytes and stored JPEG/PNG/TIFF header dimensions; original dimensions are unavailable. Other statuses: missing, skipped, failed. Overwritten outputs fail as superseded or invalidated. exported/counts reflect retained deliverables. complete excludes cancellations; success also excludes failures/missing. Existing-file skips can succeed; remaining_ids retries cancellations. checksum_policy: not_computed. Primary files only; no pixel-integrity guarantee. See skill reference for verification limits.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

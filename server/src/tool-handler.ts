@@ -3,6 +3,7 @@ import { validateToolArgs } from "./validate-args.js";
 import { findDuplicateGroups, type DuplicateGroupArgs } from "./duplicate-groups.js";
 import { getPhotoStats } from "./photo-stats.js";
 import { cropPreview, regionRenderArgs, type PreviewArgs } from "./preview-region.js";
+import { verifyExportResult } from "./export-results.js";
 import { PREVIEW_SIZES } from "./preview-sizes.js";
 
 export interface ToolHandlerDeps {
@@ -120,6 +121,9 @@ export function createCallToolHandler(deps: ToolHandlerDeps) {
           content: [{ type: "text", text: `Error: ${resp.error}` }],
           isError: true,
         };
+      }
+      if (name === "export_photos") {
+        return { content: successContent(await verifyExportResult(resp.result, args as Parameters<typeof verifyExportResult>[1])) };
       }
       if (region && options?.signal?.aborted) throw new Error("Request cancelled");
       return { content: successContent(region ? cropPreview(resp.result, region) : resp.result) };

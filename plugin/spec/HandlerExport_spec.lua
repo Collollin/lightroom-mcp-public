@@ -10,6 +10,7 @@ local function setup(opts)
     helper.installImport({
         LrApplication = { activeCatalog = function() return catalog end },
         LrLogger = helper.defaultLrLogger(),
+        LrTasks = { pcall = pcall },
         LrFileUtils = {
             exists = function(path)
                 if paths[path] == nil then return "directory" end
@@ -26,8 +27,19 @@ local function setup(opts)
         },
         LrExportSession = function(args)
             table.insert(exportSessionCalls, args)
+            if opts.sessionError and #exportSessionCalls == opts.sessionError then error("Session failed") end
             return {
-                doExportOnCurrentTask = function() end,
+                renditions = function()
+                    local index = #exportSessionCalls
+                    local renditions = opts.renditions and opts.renditions[index]
+                    if renditions == nil then
+                        renditions = { {
+                            destinationPath = "/out/attempt.jpg",
+                            waitForRender = function() return true, "/out/actual-" .. index .. ".jpg" end,
+                        } }
+                    end
+                    return ipairs(renditions)
+                end,
             }
         end,
     })
@@ -72,10 +84,11 @@ describe("HandlerExport.exportPhotos", function()
 
         local r = Handler.exportPhotos({ photo_ids = { "1", "2", "3", "4", "5" }, destination = "/out" }, context)
 
-        assert.are.equal(2, r.exported)
-        assert.is_nil(r.message)
-        assert.is_false(r.complete)
-        assert.are.same({ "3", "4", "5" }, r.remaining_ids)
+        assert.are.same({ "rendered", "rendered", "skipped", "skipped", "skipped" }, {
+            r.results[1].status, r.results[2].status, r.results[3].status, r.results[4].status, r.results[5].status,
+        })
+        assert.are.equal("canceled", r.results[3].reason)
+        assert.are.equal("3", r.results[3].photo_id)
         assert.are.equal(2, #calls)
     end)
 
@@ -85,8 +98,7 @@ describe("HandlerExport.exportPhotos", function()
 
         local r = Handler.exportPhotos({ photo_ids = { "1" }, destination = "/out" })
 
-        assert.is_true(r.success)
-        assert.are.equal(1, r.exported)
+        assert.are.equal("rendered", r.results[1].status)
         assert.are.equal("/out", r.destination)
         assert.are.equal("JPEG", calls[1].exportSettings.LR_format)
     end)
@@ -97,7 +109,6 @@ describe("HandlerExport.exportPhotos", function()
 
         local r = Handler.exportPhotos({ photo_ids = { "1" }, destination = "/out/new" })
 
-        assert.is_true(r.success)
         assert.are.same({ "/out/new" }, createdDirs)
         assert.are.equal("/out/new", calls[1].exportSettings.LR_export_destinationPathPrefix)
     end)
@@ -258,11 +269,120 @@ describe("HandlerExport.exportPhotos", function()
         assert.has_error(function() Handler.exportPhotos({ photo_ids = { "1" } }) end)
     end)
 
-    it("errors when no photos match", function()
-        local _, Handler = setup({ photos = {} })
-        assert.has_error(function()
-            Handler.exportPhotos({ photo_ids = { "missing" }, destination = "/out" })
-        end)
+    it("returns every missing occurrence without creating a destination", function()
+        local _, Handler, calls, dirs = setup({ photos = {}, paths = { ["/out"] = false } })
+        local r = Handler.exportPhotos({ photo_ids = { "missing", 999 }, destination = "/out" })
+        assert.are.same({
+            { input_index = 1, requested_id = "missing", status = "missing", reason = "photo_not_found" },
+            { input_index = 2, requested_id = 999, status = "missing", reason = "photo_not_found" },
+        }, r.results)
+        assert.are.same({}, calls)
+        assert.are.same({}, dirs)
+    end)
+
+    it("keeps mixed missing entries and repeated aliases in original input order", function()
+        local p = helper.fakePhoto({ id = "1", path = "/a.jpg" })
+        local _, Handler, calls = setup({ photos = { p } })
+        local r = Handler.exportPhotos({ photo_ids = { 1, "missing", "/a.jpg", "1" }, destination = "/out" })
+        assert.are.equal(3, #calls)
+        assert.are.same({ 1, "missing", "/a.jpg", "1" }, {
+            r.results[1].requested_id, r.results[2].requested_id, r.results[3].requested_id, r.results[4].requested_id,
+        })
+        assert.are.equal("missing", r.results[2].status)
+        assert.are.equal(4, r.results[4].input_index)
+        assert.are.equal("1", r.results[3].photo_id)
+        assert.are.equal("/out/actual-2.jpg", r.results[3].path)
+    end)
+
+    it("keeps the virtual-copy identity returned for a path alias", function()
+        local original = helper.fakePhoto({ id = "1", path = "/a.jpg" })
+        local copy = helper.fakePhoto({ id = "2", path = "/a.jpg", isVirtualCopy = true, masterPhoto = original })
+        original:setRawMetadata("virtualCopies", { copy })
+        local _, Handler = setup({ photos = { original, copy } })
+        local r = Handler.exportPhotos({ photo_ids = { "1", "/a.jpg", "2" }, destination = "/out" })
+        assert.are.same({ "1", "2", "2" }, {
+            r.results[1].photo_id, r.results[2].photo_id, r.results[3].photo_id,
+        })
+    end)
+
+    it("does not mistake skipped waitForRender success for an exported file", function()
+        local p = helper.fakePhoto({ id = "1", path = "/a.jpg" })
+        local _, Handler = setup({ photos = { p }, renditions = { { {
+            wasSkipped = true, destinationPath = "/out/old.jpg",
+            waitForRender = function() return true, "/out/old.jpg" end,
+        } } } })
+        local r = Handler.exportPhotos({ photo_ids = { "1" }, destination = "/out", on_existing = "skip" })
+        assert.are.equal("skipped", r.results[1].status)
+        assert.are.equal("existing_file", r.results[1].reason)
+        assert.is_nil(r.results[1].path)
+    end)
+
+    it("reports each collision skipped when Lightroom returns no rendition", function()
+        local photos = {
+            helper.fakePhoto({ id = "1", path = "/a/collision.jpg" }),
+            helper.fakePhoto({ id = "2", path = "/b/collision.jpg" }),
+            helper.fakePhoto({ id = "3", path = "/c/collision.jpg" }),
+        }
+        local _, Handler = setup({ photos = photos, renditions = {
+            { { waitForRender = function() return true, "/out/collision.jpg" end } }, {}, {}, {},
+        } })
+        local r = Handler.exportPhotos({ photo_ids = { "1", "2", "3", "1" }, destination = "/out", on_existing = "skip" })
+        assert.are.same({
+            { input_index = 1, requested_id = "1", photo_id = "1", status = "rendered", path = "/out/collision.jpg" },
+            { input_index = 2, requested_id = "2", photo_id = "2", status = "skipped", reason = "existing_file" },
+            { input_index = 3, requested_id = "3", photo_id = "3", status = "skipped", reason = "existing_file" },
+            { input_index = 4, requested_id = "1", photo_id = "1", status = "skipped", reason = "existing_file" },
+        }, r.results)
+    end)
+
+    it("keeps empty renditions as failures for rename and overwrite", function()
+        local p = helper.fakePhoto({ id = "1", path = "/a.jpg" })
+        for _, policy in ipairs({ "rename", "overwrite" }) do
+            local _, Handler = setup({ photos = { p }, renditions = { {} } })
+            local r = Handler.exportPhotos({ photo_ids = { "1" }, destination = "/out", on_existing = policy })
+            assert.are.equal("failed", r.results[1].status)
+            assert.are.equal("rendition_missing", r.results[1].error.code)
+            assert.is_nil(r.results[1].reason)
+        end
+    end)
+
+    it("keeps render errors as failures under the skip policy", function()
+        local p = helper.fakePhoto({ id = "1", path = "/a.jpg" })
+        local _, Handler = setup({ photos = { p }, renditions = { { {
+            waitForRender = function() return false, "The file could not be found." end,
+        } } } })
+        local r = Handler.exportPhotos({ photo_ids = { "1" }, destination = "/out", on_existing = "skip" })
+        assert.are.equal("failed", r.results[1].status)
+        assert.are.equal("render_failed", r.results[1].error.code)
+        assert.is_nil(r.results[1].reason)
+    end)
+
+    it("keeps failed attempted paths and continues after per-photo render errors", function()
+        local p = helper.fakePhoto({ id = "1", path = "/a.jpg" })
+        local _, Handler = setup({ photos = { p }, renditions = {
+            { { destinationPath = "/out/error.jpg", waitForRender = function() error("Cannot render") end } },
+            { { destinationPath = "/out/failed.jpg", waitForRender = function() return false, "disk full" end } },
+            {},
+        } })
+        local r = Handler.exportPhotos({ photo_ids = { "1", "1", "1", "1" }, destination = "/out" })
+        assert.are.equal("render_failed", r.results[1].error.code)
+        assert.are.equal("/out/error.jpg", r.results[1].attempted_path)
+        assert.are.equal("disk full", r.results[2].error.message)
+        assert.are.equal("/out/failed.jpg", r.results[2].attempted_path)
+        assert.are.equal("rendition_missing", r.results[3].error.code)
+        assert.are.equal("rendered", r.results[4].status)
+    end)
+
+    it("rejects unexpected multiple renditions and continues after a session creation error", function()
+        local p = helper.fakePhoto({ id = "1", path = "/a.jpg" })
+        local rendition = { waitForRender = function() return true, "/out/a.jpg" end }
+        local _, Handler = setup({ photos = { p }, sessionError = 2, renditions = { { rendition, rendition } } })
+        local r = Handler.exportPhotos({ photo_ids = { "1", "1", "1" }, destination = "/out" })
+        assert.are.equal("failed", r.results[1].status)
+        assert.matches("Expected one rendition", r.results[1].error.message)
+        assert.are.equal("/out/a.jpg", r.results[1].attempted_path)
+        assert.matches("Session failed", r.results[2].error.message)
+        assert.are.equal("rendered", r.results[3].status)
     end)
 
     it("resolves photos OUTSIDE the read-access gate", function()
@@ -271,14 +391,14 @@ describe("HandlerExport.exportPhotos", function()
 
         local r = Handler.exportPhotos({ photo_ids = { "/a.jpg" }, destination = "/out" })
 
-        assert.are.equal(1, r.exported)
+        assert.are.equal("rendered", r.results[1].status)
         assert.is_false(catalog.getQueriedInsideReadAccess())
     end)
 
     it("runs the export after releasing catalog read access", function()
         -- Holding read access for the whole export wedged the bridge on
         -- macOS (issue #128). The lock must be released before
-        -- doExportOnCurrentTask runs.
+        -- waitForRender runs.
         local p = helper.fakePhoto({ id = "1", path = "/a.jpg" })
         local insideReadAccess = false
         local exportRanInsideReadAccess = nil
@@ -292,12 +412,16 @@ describe("HandlerExport.exportPhotos", function()
         helper.installImport({
             LrApplication = { activeCatalog = function() return catalog end },
             LrLogger = helper.defaultLrLogger(),
+            LrTasks = { pcall = pcall },
             LrFileUtils = { exists = function() return "directory" end },
             LrPathUtils = {},
             LrExportSession = function()
                 return {
-                    doExportOnCurrentTask = function()
-                        exportRanInsideReadAccess = insideReadAccess
+                    renditions = function()
+                        return ipairs({ { waitForRender = function()
+                            exportRanInsideReadAccess = insideReadAccess
+                            return true, "/out/a.jpg"
+                        end } })
                     end,
                 }
             end,
@@ -307,8 +431,7 @@ describe("HandlerExport.exportPhotos", function()
 
         local r = Handler.exportPhotos({ photo_ids = { "1" }, destination = "/out" })
 
-        assert.is_true(r.success)
-        assert.are.equal(1, r.exported)
+        assert.are.equal("rendered", r.results[1].status)
         assert.is_false(exportRanInsideReadAccess)
     end)
 end)
@@ -324,6 +447,7 @@ describe("HandlerExport.exportPhotoMetadata", function()
         helper.installImport({
             LrApplication = { activeCatalog = function() return catalog end },
             LrLogger = helper.defaultLrLogger(),
+            LrTasks = { pcall = pcall },
             LrFileUtils = {
                 exists = function(path)
                     if opts.existingDir == path then return "directory" end
