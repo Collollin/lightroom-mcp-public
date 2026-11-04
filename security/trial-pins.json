@@ -1,0 +1,16 @@
+{
+  "semgrep": "1.183.0",
+  "osv": "2.7.0",
+  "trufflehog": "3.99.8",
+  "rulesCommit": "16b9e6d45f10649f6a531ec4838ed9924372c3bc",
+  "rulesSha256": "70b4e0adca0515de0a07c15341ce50ed76221ab2f7bc59baca25caebaa5664f6",
+  "rulesJsonSha256": "201a4b661705a28179362b07def864fac6c8e9a0c3446e234c62f825f601bf14",
+  "osvAssets": {
+    "darwin_arm64": "d4926ef8da134332543be276dff157e4c170f99ad91fc48e89448a8816bdf70b",
+    "linux_amd64": "160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b"
+  },
+  "trufflehogAssets": {
+    "darwin_arm64": "85724f221bc390f6e0bdf65df245468c8426350de85aa9290ea5491c6d4ec35a",
+    "linux_amd64": "7c3b02f160f28929a467e29e20fba98746e0729f6e37c3c25761e4f8789abe08"
+  }
+}
