@@ -9,6 +9,7 @@
  * over the owner's nonce. Whoever squats the socket or pipe name can neither
  * pose as the owner nor learn anything that unlocks the plugin.
  */
+import { BRIDGE_STATUS_TIMEOUT_MS } from "./bridge-status.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -384,13 +385,30 @@ export class BrokerClient {
       reportProgress: Boolean(options?.onProgress),
     };
     return new Promise((resolve) => {
+      const finishStatus = (message: string) => {
+        const pending = this.pending.get(id);
+        if (!pending) return;
+        this.pending.delete(id);
+        pending.cleanup();
+        resolve(errorResponse(message));
+      };
       const cancel = () => {
         if (this.pending.has(id)) sock.write(JSON.stringify({ cancelFor: id, auth: req.auth }) + "\n");
+        if (name === "get_bridge_status") finishStatus("Status request cancelled");
       };
-      this.pending.set(id, { resolve, options, cleanup: () => options?.signal?.removeEventListener("abort", cancel) });
+      const timer = name === "get_bridge_status"
+        ? setTimeout(() => finishStatus("Owning bridge status deadline exceeded"), BRIDGE_STATUS_TIMEOUT_MS) : null;
+      this.pending.set(id, { resolve, options, cleanup: () => {
+        if (timer) clearTimeout(timer);
+        options?.signal?.removeEventListener("abort", cancel);
+      } });
       options?.signal?.addEventListener("abort", cancel, { once: true });
       sock.write(JSON.stringify(req) + "\n");
     });
+  }
+
+  pendingCount(): number {
+    return this.pending.size;
   }
 
   close(): void {

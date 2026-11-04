@@ -1,3 +1,4 @@
+import { createOwnerStatusReader } from '../src/bridge-status.js';
 import { describe, it, expect, afterEach } from '@jest/globals';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -7,6 +8,11 @@ import { Bridge, NO_OWNER_MESSAGE, unreachableOwnerMessage, type Leader } from '
 import { BrokerClient, BrokerServer, OWNER_LOST_MESSAGE, brokerPath, signNonce, type ToolCaller } from '../src/broker.js';
 import { acquireInstanceLock, LockHeldError, type InstanceLock } from '../src/instance-lock.js';
 import type { ToolResponse } from '../src/tool-handler.js';
+
+const readStatus = createOwnerStatusReader({
+  dispatcher: { call: async () => ({ id: 'unused' }) },
+  connection: () => ({ requestConnected: false, responseConnected: false, generation: 0 }),
+});
 
 function text(resp: ToolResponse): string {
   return resp.content[0]?.text ?? '';
@@ -309,6 +315,7 @@ describe('Bridge', () => {
       startLeader: (): Leader => {
         started.push(label);
         return {
+          readStatus,
           callTool: call ?? (async (name) => ok(`${label}:${name}`)),
           stop: () => stopped.push(label),
         };
@@ -468,7 +475,7 @@ describe('Bridge', () => {
       startLeader: () => {
         attempts += 1;
         if (attempts === 1) throw new Error('boom');
-        return { callTool: async () => ok('second'), stop: () => {} };
+        return { readStatus, callTool: async () => ok('second'), stop: () => {} };
       },
       readToken: () => null,
       retryMs: 20,
@@ -495,7 +502,7 @@ describe('Bridge', () => {
       acquireLock: () => acquireInstanceLock(58763, 58764, dir),
       startLeader: () => {
         started.push('x');
-        return { callTool: async () => ok('x'), stop: () => {} };
+        return { readStatus, callTool: async () => ok('x'), stop: () => {} };
       },
       readToken: () => null,
       retryMs: 1000,
@@ -530,7 +537,7 @@ describe('Bridge', () => {
       acquireLock: () => (electionsA++ === 0 ? stale.lock : acquireInstanceLock(58763, 58764, dir)),
       startLeader: () => {
         started.push('a');
-        return { callTool: async (name) => ok(`a:${name}`), stop: () => stopped.push('a') };
+        return { readStatus, callTool: async (name) => ok(`a:${name}`), stop: () => stopped.push('a') };
       },
       readToken: () => 'tok',
       retryMs: 20,
@@ -563,7 +570,7 @@ describe('Bridge', () => {
     const a = new Bridge({
       ipcPath: ipcPath(dir),
       acquireLock: () => hung.lock,
-      startLeader: () => ({ callTool: () => new Promise<ToolResponse>(() => {}), stop: () => {} }),
+      startLeader: () => ({ readStatus, callTool: () => new Promise<ToolResponse>(() => {}), stop: () => {} }),
       readToken: () => 'tok',
       log: () => {},
     });
@@ -577,7 +584,7 @@ describe('Bridge', () => {
         if (elections++ === 0) throw new LockHeldError(watch.hungPid ?? process.pid, 58763, 58764);
         return acquireInstanceLock(58763, 58764, dir);
       },
-      startLeader: () => ({ callTool: async (name) => ok(`b:${name}`), stop: () => {} }),
+      startLeader: () => ({ readStatus, callTool: async (name) => ok(`b:${name}`), stop: () => {} }),
       readToken: () => 'tok',
       holderUnresponsive: watch.holderUnresponsive,
       lockHolder: watch.lockHolder,
@@ -640,7 +647,7 @@ describe('Bridge', () => {
     const b = new Bridge({
       ipcPath: ipcPath(dir),
       acquireLock: () => acquireInstanceLock(58763, 58764, dir),
-      startLeader: () => ({ callTool: async () => ok('b'), stop: () => {} }),
+      startLeader: () => ({ readStatus, callTool: async () => ok('b'), stop: () => {} }),
       readToken: () => 'tok',
       holderUnresponsive: () => checks++ % 2 === 0,
       holderCheckMs: 10,
@@ -671,7 +678,7 @@ describe('Bridge', () => {
     const bridge = new Bridge({
       ipcPath: ipcPath(dir),
       acquireLock: () => acquireInstanceLock(58763, 58764, dir),
-      startLeader: () => ({ callTool: async () => ok('x'), stop: () => {} }),
+      startLeader: () => ({ readStatus, callTool: async () => ok('x'), stop: () => {} }),
       readToken: () => null,
       retryMs: 20,
       readyWaitMs: 50,
@@ -694,7 +701,7 @@ describe('Bridge', () => {
       acquireLock: () => {
         throw new Error('EACCES: permission denied');
       },
-      startLeader: () => ({ callTool: async () => ok('x'), stop: () => {} }),
+      startLeader: () => ({ readStatus, callTool: async () => ok('x'), stop: () => {} }),
       readToken: () => null,
       retryMs: 10,
       readyWaitMs: 100,
@@ -714,7 +721,7 @@ describe('Bridge', () => {
       acquireLock: () => {
         throw new Error('EACCES');
       },
-      startLeader: () => ({ callTool: async () => ok('x'), stop: () => {} }),
+      startLeader: () => ({ readStatus, callTool: async () => ok('x'), stop: () => {} }),
       readToken: () => null,
       retryMs: 10,
       readyWaitMs: 20,

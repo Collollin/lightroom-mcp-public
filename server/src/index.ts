@@ -3,6 +3,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { createOwnerStatusReader } from "./bridge-status.js";
 import { PluginSocket } from "./plugin-socket.js";
 import { Dispatcher } from "./dispatcher.js";
 import { readToken, tokenFilePath } from "./token.js";
@@ -154,6 +155,7 @@ function tryReadToken(): string | null {
 }
 
 function startLeader(REQUEST_PORT: number, RESPONSE_PORT: number): Leader {
+  let generation = 0;
   let requestSocket: PluginSocket;
   let responseSocket: PluginSocket | null = null;
   let responseConnectTimer: NodeJS.Timeout | null = null;
@@ -196,7 +198,8 @@ function startLeader(REQUEST_PORT: number, RESPONSE_PORT: number): Leader {
       port: RESPONSE_PORT,
       label: "response",
       onLine: (line) => dispatcher.handleResponseLine(line),
-      onConnect: () => probeOnConnect(),
+      onConnect: () => { generation++; probeOnConnect(); },
+      onDisconnect: () => { generation++; },
     });
     responseSocket.connect();
   };
@@ -214,6 +217,7 @@ function startLeader(REQUEST_PORT: number, RESPONSE_PORT: number): Leader {
     port: REQUEST_PORT,
     label: "request",
     onConnect: () => {
+      generation++;
       if (responseConnectTimer) clearTimeout(responseConnectTimer);
       responseConnectTimer = setTimeout(() => {
         responseConnectTimer = null;
@@ -221,6 +225,7 @@ function startLeader(REQUEST_PORT: number, RESPONSE_PORT: number): Leader {
       }, RESPONSE_CONNECT_SETTLE_MS);
     },
     onDisconnect: () => {
+      generation++;
       stopResponseSocket();
     },
   });
@@ -268,6 +273,9 @@ function startLeader(REQUEST_PORT: number, RESPONSE_PORT: number): Leader {
 
   return {
     callTool,
+    readStatus: createOwnerStatusReader({ dispatcher, connection: () => ({
+      requestConnected: requestSocket.isConnected(), responseConnected: responseSocket?.isConnected() ?? false, generation,
+    }) }),
     stop: () => {
       clearInterval(heartbeat);
       if (recoveryTimer) clearInterval(recoveryTimer);

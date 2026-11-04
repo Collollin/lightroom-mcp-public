@@ -38,6 +38,10 @@
   },
   "tools": [
     {
+      "name": "get_bridge_status",
+      "description": "Read bounded bridge health and Lightroom runtime evidence without changing Lightroom."
+    },
+    {
       "name": "search_photos",
       "description": "Search the catalog by filename, keywords, rating, or date."
     },
