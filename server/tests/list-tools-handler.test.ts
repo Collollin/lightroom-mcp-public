@@ -54,6 +54,7 @@ const EXPECTED_TOOL_NAMES = [
   'apply_develop_preset',
   'copy_develop_settings',
   'match_photo_style',
+  'set_photo_crop',
   'set_develop_settings',
   'get_lens_blur',
   'set_lens_blur',
@@ -105,8 +106,8 @@ describe('TOOL_DEFINITIONS', () => {
     }
   });
 
-  it('contains exactly 71 tools', () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(71);
+  it('contains exactly 72 tools', () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(72);
   });
 
   it('replaces the separate rating and flag tools', () => {
