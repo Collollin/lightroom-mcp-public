@@ -4,16 +4,15 @@ import type { Toolset } from '../src/toolsets.js';
 
 // Fixed limits approved for every toolset/read-only combination. Raise only after
 // reviewing intentional size changes; lower these when tool definitions shrink.
-// Current full list: 101738 characters; nonempty headroom is 1000–1999 characters.
 const TOOLS_LIST_SIZE_BUDGETS = [
   { toolsets: [], write: 12, readOnly: 12 },
   { toolsets: ['core'], write: 34_000, readOnly: 16_000 },
-  { toolsets: ['develop'], write: 27_000, readOnly: 7_000 },
-  { toolsets: ['core', 'develop'], write: 60_000, readOnly: 21_000 },
+  { toolsets: ['develop'], write: 30_000, readOnly: 7_000 },
+  { toolsets: ['core', 'develop'], write: 64_000, readOnly: 21_000 },
   { toolsets: ['masks'], write: 45_000, readOnly: 4_000 },
   { toolsets: ['core', 'masks'], write: 77_000, readOnly: 18_000 },
-  { toolsets: ['develop', 'masks'], write: 71_000, readOnly: 10_000 },
-  { toolsets: ['core', 'develop', 'masks'], write: 103_000, readOnly: 24_000 },
+  { toolsets: ['develop', 'masks'], write: 74_000, readOnly: 10_000 },
+  { toolsets: ['core', 'develop', 'masks'], write: 106_000, readOnly: 24_000 },
 ] satisfies Array<{ toolsets: Toolset[]; write: number; readOnly: number }>;
 
 const configurations = TOOLS_LIST_SIZE_BUDGETS.flatMap(({ toolsets, write, readOnly }) =>

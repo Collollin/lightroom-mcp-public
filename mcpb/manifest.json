@@ -198,6 +198,10 @@
       "description": "Match a reference photo's global style after a confirmed snapshot, preserving framing, white balance, lens corrections and masks."
     },
     {
+      "name": "set_photo_crop",
+      "description": "Replace a crop in displayed-image bounds or fit an anchored pixel aspect ratio, with actual settings and dimension readback."
+    },
+    {
       "name": "set_develop_settings",
       "description": "Set Develop settings directly on a photo."
     },

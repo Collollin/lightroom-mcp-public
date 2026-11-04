@@ -4,6 +4,33 @@ import { createCallToolHandler } from '../src/tool-handler.js';
 import type { Dispatcher } from '../src/dispatcher.js';
 
 describe('validateToolArgs', () => {
+  describe('set_photo_crop', () => {
+    it.each([
+      { kind: 'bounds', left: 0.1, top: 0.2, right: 0.8, bottom: 0.7 },
+      { kind: 'aspect', width: 4, height: 5 },
+      { kind: 'aspect', width: 16, height: 9, anchor: { x: 1, y: 0 } },
+    ])('accepts the crop variant %p', crop => {
+      expect(validateToolArgs('set_photo_crop', { photo_id: 1, crop })).toBeNull();
+    });
+
+    it.each([
+      {}, { kind: 'bounds', left: -1, top: 0, right: 1, bottom: 1 },
+      { kind: 'bounds', left: 0, top: 0, right: 1, bottom: 1, width: 4 },
+      { kind: 'aspect', width: 0, height: 5 }, { kind: 'aspect', width: Infinity, height: 5 },
+      { kind: 'aspect', width: 4, height: NaN }, { kind: 'aspect', width: '4', height: 5 },
+      { kind: 'aspect', width: 4, height: 5, anchor: { x: 0.5 } },
+      { kind: 'aspect', width: 4, height: 5, anchor: { x: 0.5, y: 0.5, z: 0 } },
+      { kind: 'aspect', width: 4, height: 5, within: 'current' },
+    ])('rejects malformed crops before dispatch %p', async crop => {
+      const dispatch = jest.fn<Dispatcher['call']>();
+      const result = await createCallToolHandler({ dispatcher: { call: dispatch }, isReady: () => true })(
+        'set_photo_crop', { photo_id: 1, crop },
+      );
+      expect(result.isError).toBe(true);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+  });
+
   it('reports a single photo_id type clause', () => {
     expect(validateToolArgs('get_photo_metadata', { photo_id: true })).toBe(
       'Invalid arguments for get_photo_metadata: photo_id must be string or number',

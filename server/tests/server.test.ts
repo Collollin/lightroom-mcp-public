@@ -50,6 +50,7 @@ const TOOL_CLASSES: Record<string, 'read-only' | 'additive' | 'destructive'> = {
   copy_develop_settings: 'destructive',
   match_photo_style: 'destructive',
   set_develop_settings: 'destructive',
+  set_photo_crop: 'destructive',
   get_lens_blur: 'read-only',
   set_lens_blur: 'destructive',
   set_process_version: 'destructive',
@@ -273,10 +274,10 @@ describe('createMcpServer', () => {
     });
 
     it.each([
-      ['develop', 56, ['core', 'develop']],
+      ['develop', 57, ['core', 'develop']],
       ['masks', 47, ['core', 'masks']],
-      ['develop,masks', 71, ['core', 'develop', 'masks']],
-      ['all', 71, ['core', 'develop', 'masks']],
+      ['develop,masks', 72, ['core', 'develop', 'masks']],
+      ['all', 72, ['core', 'develop', 'masks']],
     ] as const)('toolset %s preserves contract order and definitions', async (toolsets, count, groups) => {
       const privateContracts = structuredClone(TOOL_CONTRACTS);
       pair = await connect({ toolsets });
@@ -449,10 +450,10 @@ describe('createMcpServer', () => {
       }
     });
 
-    it('returns all 71 tools', async () => {
+    it('returns all 72 tools', async () => {
       pair = await connect({ toolsets: 'all' });
       const { tools } = await pair.client.listTools();
-      expect(tools).toHaveLength(71);
+      expect(tools).toHaveLength(72);
     });
 
     it('includes search_photos and set_develop_settings', async () => {

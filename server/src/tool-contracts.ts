@@ -1454,6 +1454,58 @@ export const TOOL_CONTRACTS: ToolContract[] = [
     },
   },
   {
+    name: "set_photo_crop",
+    toolset: "develop",
+    title: "Set displayed photo crop",
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    luaHandler: "HandlerCrop.setPhotoCrop",
+    description:
+      "Replace a crop in the full uncropped displayed image, including rotated/mirrored photos. Bounds are normalized 0..1 with left<right and top<bottom. Aspect width:height is a pixel ratio fitted inside the full image; anchor aligns spare space (0 top/left, 1 bottom/right, default center). Retains at least one pixel per axis. Requires readable neutral geometric controls; rejects nonzero straighten, active perspective/lens distortion and unknown perspective fields. Preserves other edits, masks and view without switching modules or selection. Returns observed bounds, uncropped_dimensions/cropped_dimensions, orientation, changed and verification=settings_and_metadata. A write that cannot be verified returns success:false, write_attempted:true, verification=unverified and latest observation if readable; it does not roll back. Raw set_develop_settings crop keys keep their SDK semantics.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        photo_id: photoIdSchema("Photo ID or file path"),
+        crop: {
+          oneOf: [
+            {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                kind: { type: "string", const: "bounds" },
+                left: { type: "number", minimum: 0, maximum: 1 },
+                top: { type: "number", minimum: 0, maximum: 1 },
+                right: { type: "number", minimum: 0, maximum: 1 },
+                bottom: { type: "number", minimum: 0, maximum: 1 },
+              },
+              required: ["kind", "left", "top", "right", "bottom"],
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                kind: { type: "string", const: "aspect" },
+                width: { type: "number", exclusiveMinimum: 0, maximum: Number.MAX_VALUE },
+                height: { type: "number", exclusiveMinimum: 0, maximum: Number.MAX_VALUE },
+                anchor: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    x: { type: "number", minimum: 0, maximum: 1 },
+                    y: { type: "number", minimum: 0, maximum: 1 },
+                  },
+                  required: ["x", "y"],
+                },
+              },
+              required: ["kind", "width", "height"],
+            },
+          ],
+        },
+      },
+      required: ["photo_id", "crop"],
+    },
+  },
+  {
     name: "set_develop_settings",
     toolset: "develop",
     title: "Set develop settings",
