@@ -152,9 +152,14 @@ describe('validateToolArgs', () => {
     }
   });
 
-  it('bounds virtual-copy batches and accepts an optional nonblank copy name', () => {
+  it('bounds virtual-copy batches and accepts optional nonblank copy names and operation IDs', () => {
     expect(validateToolArgs('create_virtual_copies', { photo_ids: [914, '/a.jpg'] })).toBeNull();
     expect(validateToolArgs('create_virtual_copies', { photo_ids: [914], copy_name: 'Experiment' })).toBeNull();
+    expect(validateToolArgs('create_virtual_copies', { photo_ids: [914], operation_id: 'session-a' })).toBeNull();
+    expect(validateToolArgs('create_virtual_copies', { photo_ids: [914], operation_id: 'x'.repeat(128) })).toBeNull();
+    for (const operation_id of ['', ' ', 42, false, null, 'x'.repeat(129)]) {
+      expect(validateToolArgs('create_virtual_copies', { photo_ids: [914], operation_id })).toContain('operation_id');
+    }
     expect(validateToolArgs('create_virtual_copies', { photo_ids: [] })).toContain('photo_ids');
     expect(validateToolArgs('create_virtual_copies', { photo_ids: Array.from({ length: 26 }, () => 914) })).toContain('photo_ids');
     expect(validateToolArgs('create_virtual_copies', { photo_ids: [914], copy_name: ' ' })).toContain('copy_name');

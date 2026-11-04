@@ -105,7 +105,7 @@ function JSON:encode(obj)
     return encode_value(obj)
 end
 
-function JSON:decode(str)
+function JSON:decode(str, strict)
     local pos = 1
 
     local function skip_whitespace()
@@ -264,7 +264,12 @@ function JSON:decode(str)
         end
     end
 
-    return decode_value()
+    local value = decode_value()
+    if strict then
+        skip_whitespace()
+        if pos <= #str then error('Trailing JSON content') end
+    end
+    return value
 end
 
 return JSON

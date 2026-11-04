@@ -397,3 +397,27 @@ describe('createCallToolHandler', () => {
     expect(result.content[0].text).toBe('raw string');
   });
 });
+
+
+describe('virtual-copy operation outcomes', () => {
+  it.each(['complete', 'partial', 'uncertain', 'conflict', 'blocked'])('preserves structured %s outcomes and known IDs', async status => {
+    const args = { photo_ids: [914, '/a.jpg'], copy_name: 'Experiment', operation_id: 'retry-a' };
+    const outcome = {
+      operation_id: args.operation_id, status, retryable: status === 'partial', created: 1,
+      copies: [{ photo_id: '914', master_id: '914', copy_id: '1001' }], missing: ['missing'],
+      inputs: [{ index: 1, input_id: '914', photo_id: '914', master_id: '914', copy_ids: ['1001'], status: 'recorded' }],
+      observed_copies: [{ photo_id: '915', expected_master_id: '915', copy_id: '1002', verified: false }],
+      failure: { code: 'creation_uncertain', photo_id: '915', message: 'Outcome was not recorded' },
+      restoration_error: 'Could not restore selection',
+    };
+    const dispatched: unknown[] = [];
+    const handler = makeHandler({ call: async (action, params) => {
+      dispatched.push([action, params]);
+      return { id: 'vc', result: outcome };
+    } });
+    const result = await handler('create_virtual_copies', args);
+    expect(result.isError).not.toBe(true);
+    expect(JSON.parse(result.content[0].text ?? '')).toEqual(outcome);
+    expect(dispatched).toEqual([['create_virtual_copies', args]]);
+  });
+});

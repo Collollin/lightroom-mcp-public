@@ -225,7 +225,7 @@ The Develop toolset includes presets, settings, snapshots, virtual copies, style
 | `set_process_version` | Set photos to Version 1–6 with confirmation; refuses masked-photo downgrades and reports previous/actual versions. |
 | `list_develop_snapshots` | List a photo’s saved develop snapshots. |
 | `create_develop_snapshot` | Save current develop settings; set `replace` to update an existing name. |
-| `create_virtual_copies` | Create named virtual copies of up to 25 photos; return master and copy IDs and restore selection. |
+| `create_virtual_copies` | Create named virtual copies of up to 25 photos; optional operation identity makes retries reuse recorded IDs. [Retry behavior](docs/virtual-copies.md). |
 | `apply_develop_snapshot` | Restore a saved develop snapshot. |
 | `delete_develop_snapshot` | Delete one saved develop snapshot. |
 | `apply_auto_adjustments` | Apply Lightroom Auto Tone, Auto White Balance, or both, restoring the Develop view afterwards. |
