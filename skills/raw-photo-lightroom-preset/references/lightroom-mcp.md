@@ -28,9 +28,13 @@ The integration adds the missing feedback loop:
 
 This improves setting selection. It does not by itself create a canonical preset XMP.
 
+## Export results
+
+- `export_photos` returns one ordered `results` row per requested occurrence, including repeated IDs and missing inputs. Use `completed.output.path` to locate the actual deliverable. Resolved rows include `photo_id`, including virtual copies. `output.bytes` and JPEG, PNG, and TIFF stored header dimensions describe the retained primary file. Original copies have explicit unavailable dimensions. Sidecars are not enumerated, and header dimensions do not prove full pixel integrity.
+- `exported` and `counts` derive from the final rows. Earlier overwritten renders fail as `output_superseded`; a later failed overwrite can invalidate earlier attribution as `output_invalidated`. Existing-file skips can succeed. `complete` means no canceled rows; `success` also requires no failed or missing rows. `remaining_ids` contains canceled resolved IDs in input order. `checksum_policy` is `not_computed`.
+- Verification observes an opened regular file and checks identity, size, and modification times before returning. JPEG, PNG, and TIFF verification reads at most 512 MiB per file. Original copies use stable file stats without that raster limit. External writes after verification can change the file. A legacy count-only plugin reply fails with an instruction to install and reload the matching plugin. Older servers without manifests require one representative per unique folder and manual file inspection.
 ## Current gaps
 
-- Export returns a destination and count, not exact output filenames. Export one representative per unique folder and inspect the new file.
 - No virtual-copy, undo, or reset tool.
 - Adobe's SDK creates plugin-managed presets that are hidden from the Develop panel. Use versioned names and export/import the accepted file, or create a visible canonical preset through Lightroom's UI.
 - A preset can be exported only when Lightroom exposes a backing file. Built-in presets can lack one, and the backing format is determined by Lightroom.

@@ -175,3 +175,11 @@ Live SDK probe: `getAllSpots` works with Remove closed. `getSelectedTool` calls 
 Send the complete fresh `getSelectedSpotParams` table and change only uppercase `Opacity`. A partial `{ opacity: 0.5 }` raised an assertion and cleared both spots on a disposable copy. A complete table changing lowercase `opacity` read back temporarily but reverted after switching photos. Changing only uppercase `Opacity` from 0.5 to 0.6 persisted after switching photos, left the second spot unchanged, and refreshed both aliases to 0.6. Only Heal spot `Opacity` is exposed for editing; other spot parameters remain read-only.
 
 For the combined `get_mask` check, set sliders, a curve and a Point Color swatch on one disposable mask, then omit `kinds` and compare all three results with the set-tool readbacks. Check curves-only omits adjustments/swatches, invalid kinds fail, unknown mask reads no state, and the prior module/selection are restored.
+
+## Export manifest
+
+`node tests/e2e/live/export-manifest.mjs` checks actual primary output paths, filesystem byte sizes, and stored raster dimensions against `sips`. It runs JPEG, PNG, TIFF, and original exports, repeated IDs, mixed and all-missing requests, and rename, skip, and overwrite collisions. It imports owned copies with the same basename from different folders and creates an owned virtual copy. It requires the candidate server and matching plugin in a marked throwaway catalog.
+
+The checker uses `openLiveSession` and rechecks `requireThrowawayCatalog` before every tool call. It does not drive the UI with AppleScript. It retains its `export-manifest-<uuid>` folder, imported copies, and virtual copy in the disposable catalog, so catalog references never point to deleted sources. Discard these with the throwaway catalog. Successful runs save `manifests.json` beside the owned sources and exports. A failed run prints that folder for inspection.
+
+The manifest verifies primary rendition files only. Original-export sidecars are outside its scope. Raster dimensions come from headers in the actual retained file, with width and height in stored pixel order before EXIF orientation. Valid headers do not prove that the full pixel stream is intact. No checksum is computed. File checks detect observed changes during verification; external writes can still change an output afterward.

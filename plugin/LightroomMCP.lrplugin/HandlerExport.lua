@@ -2,6 +2,7 @@ local LrApplication = import 'LrApplication'
 local LrExportSession = import 'LrExportSession'
 local LrFileUtils = import 'LrFileUtils'
 local LrPathUtils = import 'LrPathUtils'
+local LrTasks = import 'LrTasks'
 
 local JSON = require 'JSON'
 local KeywordTree = require 'KeywordTree'
@@ -82,25 +83,21 @@ function ExportHandler.exportPhotos(args, context)
 
     -- Resolved without read access: the lookup runs catalog queries, which
     -- must not nest inside withReadAccessDo. Never hold read access across
-    -- the export either: doExportOnCurrentTask() can run for minutes on a
+    -- the export either: waitForRender() can run for minutes on a
     -- large batch, and holding it for that span blocks every other handler
     -- (list_collections, get_selected_photos, ...) and on macOS wedged the
     -- bridge until a manual restart (issue #128). LrExportSession acquires
     -- its own catalog access during rendering.
-    local photosToExport = {}
-    for _, entry in ipairs(PhotoLookup.resolveMany(catalog, args.photo_ids)) do
-        if entry.photo then
-            table.insert(photosToExport, entry.photo)
-        end
-    end
-
-    if #photosToExport == 0 then
-        error("No photos found to export")
+    local entries = PhotoLookup.resolveMany(catalog, args.photo_ids)
+    local found = 0
+    for _, entry in ipairs(entries) do
+        if entry.photo then found = found + 1 end
     end
 
     -- Lightroom refuses a missing folder with its own error, in the UI
     -- language; create it as export_photo_metadata and export_develop_preset do.
-    local existing = LrFileUtils.exists(destination)
+    local existing = "directory"
+    if found > 0 then existing = LrFileUtils.exists(destination) end
     if existing == false then
         LrFileUtils.createAllDirectories(destination)
         if LrFileUtils.exists(destination) ~= "directory" then
@@ -138,36 +135,84 @@ function ExportHandler.exportPhotos(args, context)
         exportSettings.LR_tiff_compressionMethod = 'compressionMethod_LZW'
     end
 
-    local exportedCount = 0
-    local remainingIds = {}
+    local results = {}
+    local renderedCount = 0
+    local processed = 0
     local lastName
-    for index, photo in ipairs(photosToExport) do
-        if context and context:isCanceled() then
-            for nextIndex = index, #photosToExport do
-                remainingIds[#remainingIds + 1] = tostring(photosToExport[nextIndex].localIdentifier)
+    for index, entry in ipairs(entries) do
+        local photo = entry.photo
+        local result = { input_index = index, requested_id = entry.id }
+        results[index] = result
+        if not photo then
+            result.status = "missing"
+            result.reason = "photo_not_found"
+        else
+            result.photo_id = tostring(photo.localIdentifier)
+            if context and context:isCanceled() then
+                result.status = "skipped"
+                result.reason = "canceled"
+            else
+                local ok, err = LrTasks.pcall(function()
+                    local name = photo:getFormattedMetadata("fileName") or result.photo_id
+                    if context then context:report(processed, #entries, name) end
+                    lastName = name
+                    local session = LrExportSession {
+                        photosToExport = { photo },
+                        exportSettings = exportSettings,
+                    }
+                    local count = 0
+                    for _, rendition in session:renditions() do
+                        count = count + 1
+                        if count > 1 then
+                            error("Expected one rendition for one requested photo")
+                        end
+                        result.attempted_path = rendition.destinationPath
+                        local rendered, pathOrError = rendition:waitForRender()
+                        if rendition.wasSkipped then
+                            result.status = "skipped"
+                            result.reason = "existing_file"
+                            result.attempted_path = nil
+                        elseif rendered and type(pathOrError) == "string" and pathOrError ~= "" then
+                            result.status = "rendered"
+                            result.path = pathOrError
+                            result.attempted_path = nil
+                        else
+                            result.status = "failed"
+                            local message = tostring(pathOrError or "Render failed")
+                            result.error = { code = "render_failed", message = message ~= "" and message or "Render failed" }
+                        end
+                    end
+                    if count == 0 then
+                        -- Lightroom omits skipped collisions from the rendition iterator.
+                        if collisionHandling == "skip" then
+                            result.status = "skipped"
+                            result.reason = "existing_file"
+                        else
+                            result.status = "failed"
+                            result.error = { code = "rendition_missing", message = "Lightroom returned no rendition" }
+                        end
+                    end
+                end)
+                if not ok then
+                    result.status = "failed"
+                    local message = tostring(err)
+                    result.error = { code = "render_failed", message = message ~= "" and message or "Render failed" }
+                    result.attempted_path = result.attempted_path or result.path
+                    result.path = nil
+                    result.reason = nil
+                end
+                if result.status == "rendered" then renderedCount = renderedCount + 1 end
             end
-            break
         end
-        local name = photo:getFormattedMetadata("fileName") or tostring(photo.localIdentifier)
-        if context then context:report(exportedCount, #photosToExport, name) end
-        local exportSession = LrExportSession {
-            photosToExport = { photo },
-            exportSettings = exportSettings,
-        }
-        exportSession:doExportOnCurrentTask()
-        exportedCount = exportedCount + 1
-        lastName = name
+        processed = processed + 1
     end
-    if context and lastName then context:report(exportedCount, #photosToExport, lastName) end
+    if context and lastName then context:report(processed, #entries, lastName) end
 
-    Log.info(string.format("Exported %d photos to: %s", exportedCount, destination))
+    Log.info(string.format("Rendered %d photos to: %s", renderedCount, destination))
 
     return {
-        success = true,
-        exported = exportedCount,
-        complete = #remainingIds == 0,
-        remaining_ids = #remainingIds > 0 and remainingIds or nil,
         destination = destination,
+        results = results,
     }
 end
 
